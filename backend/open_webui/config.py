@@ -1151,10 +1151,10 @@ DEFAULT_USER_PERMISSIONS = {
         "edit": USER_PERMISSIONS_CHAT_EDIT,
         "share": USER_PERMISSIONS_CHAT_SHARE,
         "export": USER_PERMISSIONS_CHAT_EXPORT,
-        "stt": USER_PERMISSIONS_CHAT_STT,
-        "tts": USER_PERMISSIONS_CHAT_TTS,
-        "call": USER_PERMISSIONS_CHAT_CALL,
-        "multiple_models": USER_PERMISSIONS_CHAT_MULTIPLE_MODELS,
+        "stt": False,  # 禁用语音输入
+        "tts": False,  # 禁用语音输出
+        "call": False,  # 禁用语音通话
+        "multiple_models": False,  # 禁用多模型并行对话
         "temporary": USER_PERMISSIONS_CHAT_TEMPORARY,
         "temporary_enforced": USER_PERMISSIONS_CHAT_TEMPORARY_ENFORCED,
     },
@@ -1162,7 +1162,7 @@ DEFAULT_USER_PERMISSIONS = {
         "direct_tool_servers": USER_PERMISSIONS_FEATURES_DIRECT_TOOL_SERVERS,
         "web_search": USER_PERMISSIONS_FEATURES_WEB_SEARCH,
         "image_generation": USER_PERMISSIONS_FEATURES_IMAGE_GENERATION,
-        "code_interpreter": USER_PERMISSIONS_FEATURES_CODE_INTERPRETER,
+        "code_interpreter": False,  # 禁用代码执行
         "notes": USER_PERMISSIONS_FEATURES_NOTES,
     },
 }
@@ -1273,7 +1273,7 @@ def validate_cors_origin(origin):
 # CORS_ALLOW_ORIGIN=http://localhost:5173;http://localhost:8080
 # in your .env file depending on your frontend port, 5173 in this case.
 CORS_ALLOW_ORIGIN = os.environ.get(
-    "CORS_ALLOW_ORIGIN", "*;http://localhost:5173;http://localhost:8080"
+    "CORS_ALLOW_ORIGIN", "http://127.0.0.1:5173;http://127.0.0.1:8080;http://localhost:5173;http://localhost:8080"
 ).split(";")
 
 if "*" in CORS_ALLOW_ORIGIN:

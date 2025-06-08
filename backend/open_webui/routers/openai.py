@@ -8,6 +8,7 @@ from typing import Literal, Optional, overload
 import aiohttp
 from aiocache import cached
 import requests
+import json
 
 
 from fastapi import Depends, FastAPI, HTTPException, Request, APIRouter
@@ -26,6 +27,7 @@ from open_webui.env import (
     AIOHTTP_CLIENT_TIMEOUT_MODEL_LIST,
     ENABLE_FORWARD_USER_INFO_HEADERS,
     BYPASS_MODEL_ACCESS_CONTROL,
+    ENABLE_KFS_DEBUG,
 )
 from open_webui.models.users import UserModel
 
@@ -822,8 +824,12 @@ async def generate_chat_completion(
         request_url = f"{url}/chat/completions"
         headers["Authorization"] = f"Bearer {key}"
 
-    payload = json.dumps(payload)
+    if ENABLE_KFS_DEBUG:
+        outside=['model']
+        new_dict = {k: v for k, v in metadata.items() if k not in outside}
+        payload['metadata'] = new_dict
 
+    payload = json.dumps(payload)
     r = None
     session = None
     streaming = False
@@ -845,6 +851,29 @@ async def generate_chat_completion(
         # Check if response is SSE
         if "text/event-stream" in r.headers.get("Content-Type", ""):
             streaming = True
+            # 创建一个包装器来处理流式响应
+            # async def process_stream():
+            #     async for chunk in r.content:
+            #         try:
+            #             # 尝试解析SSE数据
+            #             if chunk.startswith(b"data: "):
+            #                 data = json.loads(chunk[6:])
+            #                 # 检查是否是最后一个消息
+            #                 if data.get("choices", [{}])[0].get("finish_reason") is not None:
+            #                     # 添加usage信息
+            #                     if "usage" not in data:
+            #                         data["usage"] = {
+            #                             "prompt_tokens": 0,
+            #                             "completion_tokens": 0,
+            #                             "total_tokens": 0
+            #                         }
+            #                 yield chunk
+            #             else:
+            #                 yield chunk
+            #         except Exception as e:
+            #             log.error(f"Error processing stream chunk: {e}")
+            #             yield chunk
+
             return StreamingResponse(
                 r.content,
                 status_code=r.status,
@@ -861,6 +890,16 @@ async def generate_chat_completion(
                 response = await r.text()
 
             r.raise_for_status()
+            
+            # # 检查响应中是否包含usage信息
+            # if isinstance(response, dict) and "usage" not in response:
+            #     # 添加默认的usage信息
+            #     response["usage"] = {
+            #         "prompt_tokens": 0,
+            #         "completion_tokens": 0,
+            #         "total_tokens": 0
+            #     }
+            
             return response
     except Exception as e:
         log.exception(e)
@@ -948,6 +987,29 @@ async def proxy(path: str, request: Request, user=Depends(get_verified_user)):
         # Check if response is SSE
         if "text/event-stream" in r.headers.get("Content-Type", ""):
             streaming = True
+            # 创建一个包装器来处理流式响应
+            # async def process_stream():
+            #     async for chunk in r.content:
+            #         try:
+            #             # 尝试解析SSE数据
+            #             if chunk.startswith(b"data: "):
+            #                 data = json.loads(chunk[6:])
+            #                 # 检查是否是最后一个消息
+            #                 if data.get("choices", [{}])[0].get("finish_reason") is not None:
+            #                     # 添加usage信息
+            #                     if "usage" not in data:
+            #                         data["usage"] = {
+            #                             "prompt_tokens": 0,
+            #                             "completion_tokens": 0,
+            #                             "total_tokens": 0
+            #                         }
+            #                 yield chunk
+            #             else:
+            #                 yield chunk
+            #         except Exception as e:
+            #             log.error(f"Error processing stream chunk: {e}")
+            #             yield chunk
+
             return StreamingResponse(
                 r.content,
                 status_code=r.status,

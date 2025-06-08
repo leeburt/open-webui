@@ -43,7 +43,11 @@ class ReconnectingPostgresqlDatabase(CustomReconnectMixin, PostgresqlDatabase):
 
 
 def register_connection(db_url):
-    db = connect(db_url, unquote_user=True, unquote_password=True)
+    if "sqlite" in db_url:
+        db = connect(db_url)
+    else:
+        db = connect(db_url, unquote_user=True, unquote_password=True)
+    
     if isinstance(db, PostgresqlDatabase):
         # Enable autoconnect for SQLite databases, managed by Peewee
         db.autoconnect = True
