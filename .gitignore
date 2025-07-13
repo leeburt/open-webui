@@ -309,3 +309,10 @@ cypress/screenshots
 .vscode/settings.json
 
 *.csv
+*.xlsx
+*.xls
+*.docx
+*.doc
+*.pptx
+*.ppt
+*.pdf   
