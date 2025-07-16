@@ -7,7 +7,7 @@ from datetime import datetime
 
 # --- 页面配置 ---
 st.set_page_config(
-    page_title="聆镜BI数据看板",
+    page_title="聆境BI数据看板",
     page_icon="📊",
     layout="wide"
 )
@@ -71,19 +71,28 @@ def main():
     overall_stats = data.get('overall_stats', {})
     daily_df = process_daily_stats(data.get('daily_stats', {}))
     model_df = process_dict_to_df(data.get('model_stats', {}), "model")
-    user_df = process_dict_to_df(data.get('user_stats', {}), "user")
+    
+    daily_user_stats_list = data.get('daily_user_stats', [])
+    if daily_user_stats_list:
+        user_daily_df = pd.DataFrame(daily_user_stats_list)
+        if not user_daily_df.empty:
+            user_daily_df['created_at'] = pd.to_datetime(user_daily_df['created_at'])
+    else:
+        user_daily_df = pd.DataFrame(columns=['created_at', 'user_name', 'usage_count', 'feedback_count'])
+
 
     # --- 页面主体 ---
     
     # 1. 关键指标 (KPIs)
     st.header("整体概览")
-    col1, col2= st.columns(2)
+    col1, col2, col3 = st.columns(3)
 
     with col1:
         st.metric(label="总提问数", value=f"{overall_stats.get('total_user_queries', 0):,}")
     with col2:
         st.metric(label="总反馈数", value=f"{overall_stats.get('total_feedbacks', 0):,}")
-
+    with col3:
+        st.metric(label="反馈率", value=f"{overall_stats.get('feedback_ratio', 0):.2%}")    
 
     st.markdown("---")
 
@@ -107,17 +116,81 @@ def main():
             start_date, end_date = date_range
             filtered_daily_df = daily_df[(daily_df['date'].dt.date >= start_date) & (daily_df['date'].dt.date <= end_date)]
 
-            fig_daily = px.line(
-                filtered_daily_df, x='date', y=['usage_count', 'feedback_count'],
-                labels={'value': '数量', 'date': '日期', 'variable': '指标'},
-                template="plotly_white"
-            )
-            fig_daily.update_layout(legend_title_text='', title_text="每日提问量 vs 反馈量", title_x=0.5)
-            st.plotly_chart(fig_daily, use_container_width=True)
+            col1, col2 = st.columns(2)
+
+            with col1:
+                filtered_daily_df=filtered_daily_df.rename(columns={
+                    'usage_count': '提问数',
+                    'feedback_count': '反馈数',
+                    'good': '好评数',
+                    'bad': '错误数'
+                })
+                fig_daily = px.line(
+                    filtered_daily_df, x='date', y=['提问数', '反馈数', '好评数', '错误数'],
+                    labels={'value': '数量', 'date': '日期', 'variable': '指标'},
+                    template="plotly_white"
+                )
+                fig_daily.update_layout(legend_title_text='', title_text="每日提问和反馈数量", title_x=0.5)
+                st.plotly_chart(fig_daily, use_container_width=True)
+
+            with col2:
+                rate_cols = ['feedback_ratio', 'excellent_rate', 'error_rate', 'to_be_improved_rate']
+                
+                legend_rename_map = {
+                    'feedback_ratio': '反馈率',
+                    'excellent_rate': '好评率',
+                    'error_rate': '错误率',
+                    'to_be_improved_rate': '待改进率'
+                }
+                
+                available_cols = [col for col in rate_cols if col in filtered_daily_df.columns]
+                
+                if available_cols:
+                    df_melted = filtered_daily_df.melt(
+                        id_vars=['date'], 
+                        value_vars=available_cols,
+                        var_name='指标',
+                        value_name='比率'
+                    )
+                    df_melted['指标'] = df_melted['指标'].map(legend_rename_map)
+
+                    fig_rates = px.line(
+                        df_melted, x='date', y='比率', color='指标',
+                        labels={'比率': '比率', 'date': '日期'},
+                        template="plotly_white"
+                    )
+                    fig_rates.update_layout(
+                        legend_title_text='', 
+                        title_text="每日反馈比率趋势", 
+                        title_x=0.5,
+                        yaxis_tickformat='.2%'
+                    )
+                    st.plotly_chart(fig_rates, use_container_width=True)
+                else:
+                    st.info("无可用的反馈率数据。")
 
 
             with st.expander("查看每日趋势明细数据"):
-                st.dataframe(filtered_daily_df.style.format({'usage_count': '{:,}', 'feedback_count': '{:,}'}))
+                display_df = filtered_daily_df.copy()
+                rate_cols = ['feedback_ratio', 'excellent_rate', 'error_rate', 'to_be_improved_rate']
+                format_dict = {
+                    'usage_count': '{:,}', 
+                    'feedback_count': '{:,}',
+                    'good': '{:,}',
+                    'bad': '{:,}',
+                    'to_be_improved': '{:,}'
+                }
+                for col in rate_cols:
+                    if col in display_df.columns:
+                        format_dict[col] = '{:.2%}'
+                display_df=display_df.rename(columns={
+                    'usage_count': '提问数',
+                    'feedback_count': '反馈数',
+                    'good': '好评数',
+                    'bad': '差评数',
+                    'to_be_improved': '待改进数'
+                })
+                st.dataframe(display_df.style.format(format_dict))
                 csv_daily = convert_df_to_csv(filtered_daily_df)
                 st.download_button(
                     label="下载每日趋势数据 (CSV)",
@@ -173,46 +246,74 @@ def main():
     # 4. 用户使用情况分析
     st.header("用户使用情况分析")
     
-    if not user_df.empty:
-        user_list = sorted(user_df['user'].unique())
-        selected_users = st.multiselect(
-            "选择用户 (留空以显示Top 20高频用户)",
-            options=user_list, default=None,
-            placeholder="选择一个或多个用户进行分析"
-        )
-        
-        if selected_users:
-            df_to_plot = user_df[user_df['user'].isin(selected_users)].copy()
-            title_text = "所选用户提问量 vs 反馈量"
-        else:
-            df_to_plot = user_df.sort_values('usage_count', ascending=False).head(20)
-            title_text = "Top 20 高频用户提问量 vs 反馈量"
+    if not user_daily_df.empty:
+        min_date_user = user_daily_df['created_at'].min().date()
+        max_date_user = user_daily_df['created_at'].max().date()
 
-        df_to_plot.sort_values('usage_count', ascending=True, inplace=True)
-        
-        fig_user = px.bar(
-            df_to_plot, y='user', x=['usage_count', 'feedback_count'],
-            orientation='h', barmode='group',
-            labels={'value': '数量', 'user': '用户', 'variable': '指标'},
-            template="plotly_white",
-            height=max(400, len(df_to_plot) * 40), text_auto=True
+        user_date_range = st.date_input(
+            "选择日期范围",
+            value=(min_date_user, max_date_user),
+            min_value=min_date_user,
+            max_value=max_date_user,
+            key="user_date_range",
+            help="选择一个时间段来分析用户数据。"
         )
-        fig_user.update_layout(legend_title_text='', yaxis_title=None, title_text=title_text, title_x=0.5)
-        fig_user.update_traces(textposition='outside')
-        st.plotly_chart(fig_user, use_container_width=True)
         
-        with st.expander("查看用户统计明细数据"):
-            display_df = df_to_plot.sort_values('usage_count', ascending=False)
-            st.dataframe(display_df.style.format({'usage_count': '{:,}', 'feedback_count': '{:,}'}))
+        if len(user_date_range) == 2:
+            start_date_user, end_date_user = user_date_range
             
-            csv_user = convert_df_to_csv(display_df)
-            time_str = datetime.now().strftime("%Y%m%d_%H%M%S")
-            st.download_button(
-                label="下载用户使用数据(CSV)",
-                data=csv_user,
-                file_name=f'user_use_data_{time_str}.csv',
-                mime='text/csv',
-            )
+            filtered_user_daily_df = user_daily_df[
+                (user_daily_df['created_at'].dt.date >= start_date_user) &
+                (user_daily_df['created_at'].dt.date <= end_date_user)
+            ]
+
+            user_df = filtered_user_daily_df.groupby('user_name').agg(
+                usage_count=('usage_count', 'sum'),
+                feedback_count=('feedback_count', 'sum')
+            ).reset_index().rename(columns={'user_name': 'user'})
+
+            if not user_df.empty:
+                user_list = sorted(user_df['user'].unique())
+                selected_users = st.multiselect(
+                    "选择用户 (留空以显示Top 20高频用户)",
+                    options=user_list, default=None,
+                    placeholder="选择一个或多个用户进行分析"
+                )
+                
+                if selected_users:
+                    df_to_plot = user_df[user_df['user'].isin(selected_users)].copy()
+                    title_text = "所选用户提问量 vs 反馈量"
+                else:
+                    df_to_plot = user_df.sort_values('usage_count', ascending=False).head(20)
+                    title_text = "Top 20 高频用户提问量 vs 反馈量"
+
+                df_to_plot.sort_values('usage_count', ascending=True, inplace=True)
+                
+                fig_user = px.bar(
+                    df_to_plot, y='user', x=['usage_count', 'feedback_count'],
+                    orientation='h', barmode='group',
+                    labels={'value': '数量', 'user': '用户', 'variable': '指标'},
+                    template="plotly_white",
+                    height=max(400, len(df_to_plot) * 40), text_auto=True
+                )
+                fig_user.update_layout(legend_title_text='', yaxis_title=None, title_text=title_text, title_x=0.5)
+                fig_user.update_traces(textposition='outside')
+                st.plotly_chart(fig_user, use_container_width=True)
+                
+                with st.expander("查看用户统计明细数据"):
+                    display_df = df_to_plot.sort_values('usage_count', ascending=False)
+                    st.dataframe(display_df.style.format({'usage_count': '{:,}', 'feedback_count': '{:,}'}))
+                    
+                    csv_user = convert_df_to_csv(display_df)
+                    time_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    st.download_button(
+                        label="下载用户使用数据(CSV)",
+                        data=csv_user,
+                        file_name=f'user_use_data_{time_str}.csv',
+                        mime='text/csv',
+                    )
+            else:
+                st.info("在选定时间范围内没有用户数据。")
     else:
         st.info("没有用户统计数据。")
 

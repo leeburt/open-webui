@@ -43,8 +43,8 @@ def generate_summary_stats(chat_df: pd.DataFrame, feedback_df: pd.DataFrame) -> 
     feedback_df.dropna(subset=['created_at', 'user_name', 'model'], inplace=True)
 
     # 替换模型名称
-    chat_df['last_chat_model'] = chat_df['last_chat_model'].replace('星伴V1.1', '聆镜 1.1')
-    feedback_df['model'] = feedback_df['model'].replace('星伴V1.1', '聆镜 1.1')
+    chat_df['last_chat_model'] = chat_df['last_chat_model'].replace('星伴V1.1', '聆境 1.1')
+    feedback_df['model'] = feedback_df['model'].replace('星伴V1.1', '聆境 1.1')
 
     # 1. 总体统计
     summary['overall_stats'] = {
@@ -82,35 +82,58 @@ def generate_summary_stats(chat_df: pd.DataFrame, feedback_df: pd.DataFrame) -> 
     daily_stats = pd.merge(daily_usage, daily_feedback, left_index=True, right_index=True, how='outer').fillna(0)
     daily_stats.rename(columns={'count_x': 'usage_count', 'count_y': 'feedback_count'}, inplace=True)
 
+    # 4.1. 按天统计好评和差评
+    if not feedback_df.empty and 'good_or_bad' in feedback_df.columns:
+        daily_feedback_by_rating = feedback_df.groupby([pd.Grouper(key='created_at', freq='D'), 'good_or_bad']).size().unstack(fill_value=0)
+        # 确保'good'和'bad'列存在
+        if 'good' not in daily_feedback_by_rating.columns:
+            daily_feedback_by_rating['good'] = 0
+        if 'bad' not in daily_feedback_by_rating.columns:
+            daily_feedback_by_rating['bad'] = 0
+        
+        daily_stats = daily_stats.join(daily_feedback_by_rating[['good', 'bad']], how='outer').fillna(0)
+    else:
+        daily_stats['good'] = 0
+        daily_stats['bad'] = 0
+
+    # 添加待改进列，并预留
+    daily_stats['to_be_improved'] = 0
+
+    # 4.2. 计算各种率
+    daily_stats['feedback_ratio'] = (daily_stats['feedback_count'] / daily_stats['usage_count']).where(daily_stats['usage_count'] > 0, 0)
+    daily_stats['excellent_rate'] = (daily_stats['good'] / daily_stats['usage_count']).where(daily_stats['usage_count'] > 0, 0)
+    daily_stats['error_rate'] = (daily_stats['bad'] / daily_stats['usage_count']).where(daily_stats['usage_count'] > 0, 0)
+    daily_stats['to_be_improved_rate'] = (daily_stats['to_be_improved'] / daily_stats['usage_count']).where(daily_stats['usage_count'] > 0, 0)
+
     # 将浮点计数值转换为整数
-    daily_stats = daily_stats.astype(int)
+    daily_stats[['usage_count', 'feedback_count', 'good', 'bad', 'to_be_improved']] = daily_stats[['usage_count', 'feedback_count', 'good', 'bad', 'to_be_improved']].astype(int)
 
     # 将DatetimeIndex转换为字符串，以确保JSON序列化兼容性
     daily_stats.index = daily_stats.index.strftime('%Y-%m-%d')
     summary['daily_stats'] = daily_stats.to_dict('index')
 
-    # 5. 按天和用户统计
-    daily_user_usage = chat_df.groupby([pd.Grouper(key='created_at', freq='D'), 'user_name']).size()
-    daily_user_feedback = feedback_df.groupby([pd.Grouper(key='created_at', freq='D'), 'user_name']).size()
+    # 5. 按天和用户统计 (修改为列表形式)
+    daily_user_usage = chat_df.groupby([pd.Grouper(key='created_at', freq='D'), 'user_name']).size().reset_index(name='usage_count')
+    daily_user_feedback = feedback_df.groupby([pd.Grouper(key='created_at', freq='D'), 'user_name']).size().reset_index(name='feedback_count')
     
-    daily_user_stats = {}
-    for (date, user), count in daily_user_usage.items():
-        date_str = date.strftime('%Y-%m-%d')
-        if date_str not in daily_user_stats:
-            daily_user_stats[date_str] = {}
-        if user not in daily_user_stats[date_str]:
-            daily_user_stats[date_str][user] = {'usage_count': 0, 'feedback_count': 0}
-        daily_user_stats[date_str][user]['usage_count'] = int(count)
+    # 将日期转换为字符串
+    daily_user_usage['created_at'] = daily_user_usage['created_at'].dt.strftime('%Y-%m-%d')
+    daily_user_feedback['created_at'] = daily_user_feedback['created_at'].dt.strftime('%Y-%m-%d')
+    
+    # 合并使用和反馈数据
+    daily_user_stats_df = pd.merge(
+        daily_user_usage,
+        daily_user_feedback,
+        on=['created_at', 'user_name'],
+        how='outer'
+    ).fillna(0)
 
-    for (date, user), count in daily_user_feedback.items():
-        date_str = date.strftime('%Y-%m-%d')
-        if date_str not in daily_user_stats:
-            daily_user_stats[date_str] = {}
-        if user not in daily_user_stats[date_str]:
-            daily_user_stats[date_str][user] = {'usage_count': 0, 'feedback_count': 0}
-        daily_user_stats[date_str][user]['feedback_count'] = int(count)
-        
-    summary['daily_user_stats'] = daily_user_stats
+    # 转换数据类型
+    daily_user_stats_df['usage_count'] = daily_user_stats_df['usage_count'].astype(int)
+    daily_user_stats_df['feedback_count'] = daily_user_stats_df['feedback_count'].astype(int)
+    
+    # 转换为字典列表
+    summary['daily_user_stats'] = daily_user_stats_df.to_dict('records')
     
     return summary
 
