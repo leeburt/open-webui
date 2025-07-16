@@ -316,3 +316,5 @@ cypress/screenshots
 *.pptx
 *.ppt
 *.pdf   
+
+*.json

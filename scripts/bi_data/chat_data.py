@@ -44,7 +44,7 @@ def _parse_chat_messages(chat_df: pd.DataFrame) -> pd.DataFrame:
             user_id = r['user_id']
             user_name = r.get('name')
             
-            if user_name in ['dali', 'cz', ' cz', 'xuchengba']:
+            if user_name in ['dali', 'cz', ' cz']:
                 continue
 
             chat_model = chat_.get("models", [])

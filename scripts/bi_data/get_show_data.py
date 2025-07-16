@@ -35,16 +35,16 @@ def generate_summary_stats(chat_df: pd.DataFrame, feedback_df: pd.DataFrame) -> 
     summary = {}
 
     # 确保日期列是datetime类型，以便进行时间序列分析
-    chat_df['chat_created_at'] = pd.to_datetime(chat_df['chat_created_at'], errors='coerce')
+    chat_df['created_at'] = pd.to_datetime(chat_df['created_at'], errors='coerce')
     feedback_df['created_at'] = pd.to_datetime(feedback_df['created_at'], errors='coerce')
 
     # 删除缺少关键信息的行
-    chat_df.dropna(subset=['chat_created_at', 'user_name', 'last_chat_model'], inplace=True)
+    chat_df.dropna(subset=['created_at', 'user_name', 'last_chat_model'], inplace=True)
     feedback_df.dropna(subset=['created_at', 'user_name', 'model'], inplace=True)
 
     # 替换模型名称
-    chat_df['last_chat_model'].replace('星伴V1.1', '聆镜 1.1', inplace=True)
-    feedback_df['model'].replace('星伴V1.1', '聆镜 1.1', inplace=True)
+    chat_df['last_chat_model'] = chat_df['last_chat_model'].replace('星伴V1.1', '聆镜 1.1')
+    feedback_df['model'] = feedback_df['model'].replace('星伴V1.1', '聆镜 1.1')
 
     # 1. 总体统计
     summary['overall_stats'] = {
@@ -77,7 +77,7 @@ def generate_summary_stats(chat_df: pd.DataFrame, feedback_df: pd.DataFrame) -> 
     summary['user_stats'] = user_stats
 
     # 4. 按天统计
-    daily_usage = chat_df.set_index('chat_created_at').resample('D').size().to_frame('count')
+    daily_usage = chat_df.set_index('created_at').resample('D').size().to_frame('count')
     daily_feedback = feedback_df.set_index('created_at').resample('D').size().to_frame('count')
     daily_stats = pd.merge(daily_usage, daily_feedback, left_index=True, right_index=True, how='outer').fillna(0)
     daily_stats.rename(columns={'count_x': 'usage_count', 'count_y': 'feedback_count'}, inplace=True)
@@ -90,7 +90,7 @@ def generate_summary_stats(chat_df: pd.DataFrame, feedback_df: pd.DataFrame) -> 
     summary['daily_stats'] = daily_stats.to_dict('index')
 
     # 5. 按天和用户统计
-    daily_user_usage = chat_df.groupby([pd.Grouper(key='chat_created_at', freq='D'), 'user_name']).size()
+    daily_user_usage = chat_df.groupby([pd.Grouper(key='created_at', freq='D'), 'user_name']).size()
     daily_user_feedback = feedback_df.groupby([pd.Grouper(key='created_at', freq='D'), 'user_name']).size()
     
     daily_user_stats = {}

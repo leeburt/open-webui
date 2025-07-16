@@ -3,20 +3,19 @@ import pandas as pd
 import json
 from pathlib import Path
 import plotly.express as px
+from datetime import datetime
 
 # --- 页面配置 ---
 st.set_page_config(
-    page_title="聆镜数据BI看板",
+    page_title="聆镜BI数据看板",
     page_icon="📊",
     layout="wide"
 )
 
 # --- 数据加载与处理 ---
-@st.cache_data
 def load_data(file_path):
     """
     加载并预处理JSON统计数据。
-    使用Streamlit缓存来避免在每次交互时重新加载。
     """
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
@@ -94,6 +93,7 @@ def main():
     if not daily_df.empty:
         min_date = daily_df['date'].min().date()
         max_date = daily_df['date'].max().date()
+        daily_df.sort_values(by='date', ascending=False, inplace=True)
         date_range = st.date_input(
             "选择日期范围",
             value=(min_date, max_date),
@@ -114,6 +114,7 @@ def main():
             )
             fig_daily.update_layout(legend_title_text='', title_text="每日提问量 vs 反馈量", title_x=0.5)
             st.plotly_chart(fig_daily, use_container_width=True)
+
 
             with st.expander("查看每日趋势明细数据"):
                 st.dataframe(filtered_daily_df.style.format({'usage_count': '{:,}', 'feedback_count': '{:,}'}))
@@ -157,10 +158,11 @@ def main():
                 use_container_width=True
             )
             csv_model = convert_df_to_csv(df_to_plot_model)
+            time_str = datetime.now().strftime("%Y%m%d_%H%M%S")
             st.download_button(
-                label="下载模型数据 (CSV)",
+                label="下载模型使用反馈数据(CSV)",
                 data=csv_model,
-                file_name='model_stats_data.csv',
+                file_name=f'model_stats_data_{time_str}.csv',
                 mime='text/csv',
             )
     else:
@@ -204,18 +206,19 @@ def main():
             st.dataframe(display_df.style.format({'usage_count': '{:,}', 'feedback_count': '{:,}'}))
             
             csv_user = convert_df_to_csv(display_df)
+            time_str = datetime.now().strftime("%Y%m%d_%H%M%S")
             st.download_button(
-                label="下载用户数据 (CSV)",
+                label="下载用户使用数据(CSV)",
                 data=csv_user,
-                file_name='user_stats_data.csv',
+                file_name=f'user_use_data_{time_str}.csv',
                 mime='text/csv',
             )
     else:
         st.info("没有用户统计数据。")
 
-    # 5. 原始数据
-    with st.expander("查看原始JSON数据"):
-        st.json(data)
+    # # 5. 原始数据
+    # with st.expander("查看原始JSON数据"):
+    #     st.json(data)
 
 if __name__ == "__main__":
     main()

@@ -1,0 +1,1 @@
+cd /root/autodl-tmp/open-webui/scripts/bi_data && /root/miniconda3/bin/python  get_show_data.py >> /root/autodl-tmp/open-webui/scripts/bi_data/df_data/cron_job.log 2>&1
