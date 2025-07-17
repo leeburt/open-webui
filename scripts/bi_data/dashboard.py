@@ -51,9 +51,56 @@ def process_dict_to_df(data_dict, index_name="name"):
 
 # --- 主函数 ---
 def main():
-    st.title("📊 聆镜数据BI看板")
-    st.caption("展示用户聊天、反馈和模型使用情况的交互式仪表盘。")
+    # --- 登录验证 ---
+    if not st.session_state.get("authenticated", False):
+        st.title("🔒 登录到聆境BI数据看板")
+        
+        # 在实际应用中，应使用 st.secrets 或环境变量等更安全的方式管理凭据
+        # 为简单起见，这里我们硬编码一个用户
+        PRESET_USERS = {
+            "admin": "Kfs0716" # 您可以修改这里的用户名和密码
+        }
 
+        with st.form("login_form"):
+            username = st.text_input("用户名")
+            password = st.text_input("密码", type="password")
+            submitted = st.form_submit_button("登录")
+
+            if submitted:
+                if username in PRESET_USERS and PRESET_USERS[username] == password:
+                    st.session_state.authenticated = True
+                    st.rerun()
+                else:
+                    st.error("用户名或密码不正确。")
+        return # 如果未登录，则停止执行
+
+    # --- 如果已登录，则显示主应用 ---
+    
+    # --- 登出按钮 ---
+    def logout():
+        st.session_state.authenticated = False
+        st.rerun()
+    
+    # 将标题和退出登录按钮放在页面顶部同一行
+    st.markdown(
+        """
+        <style>
+            .st-emotion-cache-1jicfl2 {
+                padding-top: 1rem;
+                display: flex;
+                justify-content: flex-end;
+            }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+    col_title, col_button = st.columns([0.8, 0.2])
+    with col_title:
+        st.title("📊 聆镜数据BI看板")
+    with col_button:
+        st.button("退出登录", on_click=logout, use_container_width=True)
+
+    st.caption("展示用户聊天、反馈和模型使用情况的交互式仪表盘。")
     # 找到最新的统计文件
     data_dir = Path(__file__).parent / "df_data"
     list_of_files = list(data_dir.glob('*_summary_stats.json'))
@@ -187,8 +234,12 @@ def main():
                     'usage_count': '提问数',
                     'feedback_count': '反馈数',
                     'good': '好评数',
-                    'bad': '差评数',
-                    'to_be_improved': '待改进数'
+                    'bad': '错误数',
+                    'feedback_ratio': '反馈率',
+                    'to_be_improved': '待改进数',
+                    'excellent_rate': '好评率',
+                    'error_rate': '错误率',
+                    'to_be_improved_rate': '待改进率'
                 })
                 st.dataframe(display_df.style.format(format_dict))
                 csv_daily = convert_df_to_csv(filtered_daily_df)
@@ -250,14 +301,16 @@ def main():
         min_date_user = user_daily_df['created_at'].min().date()
         max_date_user = user_daily_df['created_at'].max().date()
 
-        user_date_range = st.date_input(
-            "选择日期范围",
-            value=(min_date_user, max_date_user),
-            min_value=min_date_user,
-            max_value=max_date_user,
-            key="user_date_range",
-            help="选择一个时间段来分析用户数据。"
-        )
+        # 将日期范围选择器和用户选择器放在同一行
+        col1, col2 = st.columns([1.2, 1])
+        
+        with col1:
+            user_date_range = st.date_input(
+                "选择日期范围",             value=(min_date_user, max_date_user),
+                min_value=min_date_user,
+                max_value=max_date_user,
+                key="user_date_range",              help="选择一个时间段来分析用户数据。"
+            )
         
         if len(user_date_range) == 2:
             start_date_user, end_date_user = user_date_range
@@ -274,18 +327,20 @@ def main():
 
             if not user_df.empty:
                 user_list = sorted(user_df['user'].unique())
-                selected_users = st.multiselect(
-                    "选择用户 (留空以显示Top 20高频用户)",
-                    options=user_list, default=None,
-                    placeholder="选择一个或多个用户进行分析"
-                )
+                
+                with col2:
+                    selected_users = st.multiselect(
+                        "选择用户",
+                        options=user_list, default=None,
+                        placeholder="选择一个或多个用户进行分析"
+                    )
                 
                 if selected_users:
                     df_to_plot = user_df[user_df['user'].isin(selected_users)].copy()
                     title_text = "所选用户提问量 vs 反馈量"
                 else:
-                    df_to_plot = user_df.sort_values('usage_count', ascending=False).head(20)
-                    title_text = "Top 20 高频用户提问量 vs 反馈量"
+                    df_to_plot = user_df.sort_values('usage_count', ascending=False)
+                    title_text = "用户提问量 vs 反馈量"
 
                 df_to_plot.sort_values('usage_count', ascending=True, inplace=True)
                 
